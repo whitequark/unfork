@@ -43,7 +43,7 @@ void *realloc(void *block, size_t size) {
   void *new_block = malloc(size);
   if (new_block == NULL) return NULL;
   if (block != NULL) memcpy(new_block, block, size); // dirty but sound
-  return block;
+  return new_block;
 }
 
 void *operator new(size_t size) {
