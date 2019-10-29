@@ -313,10 +313,10 @@ int unfork_stage2(void *info_p) {
       (mapping_it->prot & PROT_EXEC)  ? 'x' : '-',
       mapping_it->offset, mapping_it->pathname);
 
-    // Check against now-highest used point in our address space, which is the top of userfault fd
-    // stack.
+    // Check against now-highest used point in our address space, which is the top of userfaultfd
+    // thread stack.
     if (mapping_it->start < (uintptr_t)info.uffd_stack + info.uffd_stack_size)
-      die("[!] mapping interferes with supervisor code\n");
+      die("[!] mapping interferes with agent code\n");
 
     void *mm = mmap((void *)mapping_it->start, mapping_it->end - mapping_it->start,
       mapping_it->prot, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
@@ -330,7 +330,7 @@ int unfork_stage2(void *info_p) {
       die("[!] cannot register mapping with userfaultfd: %s\n", strerror(errno));
 
     if (!(uffd_register.ioctls & (1 << _UFFDIO_COPY)))
-      die("[!] userfaultfd mapping not support required features\n");
+      die("[!] userfaultfd mapping does not support required features\n");
 
     if (mapping_it->pathname && !strcmp(mapping_it->pathname, "[vdso]"))
       vdso_addr = mapping_it->start;
@@ -589,7 +589,7 @@ static inline int raw_set_thread_area(uintptr_t tp, unsigned entry_number = (uns
 
 template<typename Fn, typename... Args>
 auto call_with_tp(uintptr_t tp, Fn fn, Args&&... args) {
-  log("[-] calling " WPRIxPTR "\n", (uintptr_t) &fn);
+  log("[-] calling " WPRIxPTR "\n", (uintptr_t)fn);
 #if defined(__x86_64)
   uintptr_t old_fsbase, new_fsbase = tp;
   if (syscall(SYS_arch_prctl, ARCH_GET_FS, &old_fsbase) != 0)
