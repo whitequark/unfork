@@ -402,6 +402,51 @@ int unfork_stage2(void *info_p) {
 #define ELFCLASSW ELFCLASS32
 #endif
 
+// Looking up symbols by actually going through hashing them might seem unnecessarily contrived,
+// since this code doesn't really need to be fast, but bizarrely, it's actually easier to look
+// them up with amortized O(1) search than with O(n) search. (I wonder if the designers of both
+// data structures did this on purpose to discourage lazy implementations.)
+//
+// See https://flapenguin.me/2017/04/24/elf-lookup-dt-hash/ for DT_HASH lookup, and
+// https://flapenguin.me/2017/05/10/elf-lookup-dt-gnu-hash/ for DT_GNU_HASH lookup.
+
+struct elf_hash_header {
+  uint32_t bucket_count;
+  uint32_t chain_count;
+  // uint32_t buckets[bucket_count];
+  // uint32_t chains[chain_count];
+};
+
+uint32_t elf_hash(const char *name) {
+  uint32_t h = 0, g;
+  for (; *name; name++) {
+    h = (h << 4) + *name;
+    g = h & 0xf0000000;
+    if (g) {
+      h ^= g >> 24;
+      h &= ~g;
+    }
+  }
+  return h;
+}
+
+struct elf_gnu_hash_header {
+  uint32_t bucket_count;
+  uint32_t sym_offset;
+  uint32_t bloom_size;
+  uint32_t bloom_shift;
+  // size_t bloom[];
+  // uint32_t bucket_count[];
+  // uint32_t chain_count[];
+};
+
+uint32_t elf_gnu_hash(const char *name) {
+  uint32_t h = 5381;
+  for (; *name; name++)
+    h = (h << 5) + h + *name;
+  return h;
+}
+
 uintptr_t get_symbol(const char *shlib_name, const char *sym_name,
                      size_t *sym_size = NULL) {
   log("[=] looking for symbol '%s' in shared library '%s'\n", sym_name, shlib_name);
@@ -434,14 +479,17 @@ uintptr_t get_symbol(const char *shlib_name, const char *sym_name,
     die("[!] PT_DYNAMIC not found\n");
 
   const ElfW(Dyn) *dyn = (const ElfW(Dyn) *)(base + ph_dyn->p_vaddr);
-  const ElfW(Word) *hash = NULL;
+  const struct elf_hash_header *hashtab = NULL;
+  const struct elf_gnu_hash_header *ghashtab = NULL;
   const char *strtab = NULL;
   const ElfW(Sym) *symtab = NULL;
   size_t syment = 0;
   for (; dyn->d_tag != DT_NULL; dyn++) {
     // Huh, ld.so relocates these in place.
     if (dyn->d_tag == DT_HASH)
-      hash = (const ElfW(Word) *)dyn->d_un.d_ptr;
+      hashtab = (const struct elf_hash_header *)dyn->d_un.d_ptr;
+    if (dyn->d_tag == DT_GNU_HASH)
+      ghashtab = (const struct elf_gnu_hash_header *)dyn->d_un.d_ptr;
     if (dyn->d_tag == DT_STRTAB)
       strtab = (const char *)dyn->d_un.d_ptr;
     if (dyn->d_tag == DT_SYMTAB)
@@ -449,23 +497,54 @@ uintptr_t get_symbol(const char *shlib_name, const char *sym_name,
     if (dyn->d_tag == DT_SYMENT)
       syment = dyn->d_un.d_val;
   }
-  if (hash == NULL || strtab == NULL || symtab == NULL || syment == 0)
-    die("[!] DT_HASH or DT_STRTAB or DT_SYMTAB or DT_SYMENT not found\n");
+  if ((hashtab == NULL && ghashtab == NULL) || strtab == NULL || symtab == NULL || syment == 0)
+    die("[!] DT_HASH/DT_GNU_HASH or DT_STRTAB or DT_SYMTAB or DT_SYMENT not found\n");
 
-  for (size_t i = 0; i < hash[1]; i++) {
-    const ElfW(Sym) *sym = (const ElfW(Sym) *)((uintptr_t) symtab + i * syment);
-    if (ELF32_ST_TYPE(sym->st_info) != STT_FUNC &&
-        ELF32_ST_TYPE(sym->st_info) != STT_OBJECT) continue;
-    if (!strcmp(sym_name, &strtab[sym->st_name])) {
-      // But not the actual symbols, so we'll relocate those ourselves.
-      uintptr_t sym_addr = base + sym->st_value;
-      log("[=] symbol found at " WPRIxPTR " with size %0zx\n", sym_addr, sym->st_size);
-      if (sym_size != NULL) *sym_size = sym->st_size;
-      return sym_addr;
+  const ElfW(Sym) *sym = NULL;
+  if (hashtab != NULL) {
+    log("[-] using DT_HASH lookup\n");
+
+    uint32_t *buckets = (uint32_t *)(hashtab + 1);
+    uint32_t *chains = (uint32_t *)&buckets[hashtab->bucket_count];
+    uint32_t sym_hash = elf_hash(sym_name);
+    uint32_t index = buckets[sym_hash % hashtab->bucket_count];
+    for (; index; index = chains[index]) {
+      if (!strcmp(&strtab[symtab[index].st_name], sym_name)) {
+        sym = &symtab[index];
+        break; // found
+      }
+    }
+  } else if (ghashtab != NULL) {
+    log("[-] using DT_GNU_HASH lookup\n");
+
+    size_t *bloom = (size_t *)(ghashtab + 1);
+    uint32_t *buckets = (uint32_t *)&bloom[ghashtab->bloom_size];
+    uint32_t *chains = (uint32_t *)&buckets[ghashtab->bucket_count];
+    uint32_t sym_hash = elf_gnu_hash(sym_name);
+    // Skip the bloom stuff--we crash on a missing symbol anyway.
+    uint32_t index = buckets[sym_hash % ghashtab->bucket_count];
+    if (index >= ghashtab->sym_offset) {
+      for (; ; index++) {
+        uint32_t chain_hash = chains[index - ghashtab->sym_offset];
+        if ((chain_hash|1) == (sym_hash|1) && !strcmp(&strtab[symtab[index].st_name], sym_name)) {
+          sym = &symtab[index];
+          break; // found
+        }
+        if (chain_hash & 1)
+          break; // not found
+      }
     }
   }
 
-  die("[!] symbol not found\n");
+  if (sym == NULL)
+    die("[!] symbol not found\n");
+  if (ELF32_ST_TYPE(sym->st_info) != STT_FUNC &&
+      ELF32_ST_TYPE(sym->st_info) != STT_OBJECT)
+    die("[!] symbol is not function or data\n");
+  uintptr_t sym_addr = base + sym->st_value;
+  log("[=] symbol found at " WPRIxPTR " with size %0zx\n", sym_addr, sym->st_size);
+  if (sym_size != NULL) *sym_size = sym->st_size;
+  return sym_addr;
 }
 
 // start pilfering from glibc
