@@ -180,17 +180,24 @@ void unfork_process(int (*cont)()) {
     die("[!] cannot open '%s'\n", maps_filename);
 
   // 557a17c2f000-557a17c31000 r--p 00000000 fd:01 6029777                    /bin/cat
-  while (!feof(maps)) {
+  size_t line = 0;
+  while (1) {
     uintptr_t start, end;
     char perms[4];
     size_t offset;
     uint8_t major, minor;
     uintmax_t inode;
     char *pathname = NULL;
+    errno = 0;
     int parsed = fscanf(maps, "%" SCNxPTR "-%" SCNxPTR " %4c %zx %hhx:%hhx %jx%*[ ]%m[^\n]\n",
       &start, &end, perms, &offset, &major, &minor, &inode, &pathname);
-    if (!(parsed >= 7 && parsed <= 8))
-      die("[!] cannot parse maps (%d fields recognized)\n", parsed);
+    if (errno != 0)
+      die("[!] cannot read maps: %s\n", strerror(errno));
+    if (parsed == EOF)
+      break;
+    else if (!(parsed >= 7 && parsed <= 8))
+      die("[!] cannot parse maps: %d fields recognized on line %zd\n", parsed, line);
+    line++;
 
     int prot = 0;
     if (perms[0] == 'r') prot |= PROT_READ;
