@@ -33,10 +33,7 @@ void *malloc(size_t size) {
   void *block = heap_end;
   size = (size + alignof(max_align_t) - 1) & ~(alignof(max_align_t) - 1);
   if ((ssize_t)size > &heap[sizeof(heap)] - heap_end) {
-    // Print a message even if the caller can handle allocation failure, since in some cases it
-    // may cause a hard to understand failure downstream (like fscanf only parsing some of
-    // the fields).
-    fprintf(stderr, "out of memory in static heap (%zd bytes requested)\n", size);
+    errno = ENOMEM;
     return NULL;
   }
   heap_end += size;
@@ -54,7 +51,10 @@ void *realloc(void *block, size_t size) {
 
 void *operator new(size_t size) {
   void *block = malloc(size);
-  if (block == NULL) abort();
+  if (block == NULL) {
+    fprintf(stderr, "out of memory in static heap (%zd bytes requested)\n", size);
+    abort();
+  }
   return block;
 }
 
