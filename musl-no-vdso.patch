@@ -23,6 +23,26 @@ index 22b0b28b..8f79ed81 100644
 +// #define VDSO_CGT_VER "LINUX_2.6"
  
  #define SYSCALL_USE_SOCKETCALL
+diff --git a/arch/x86_64/syscall_arch.h b/arch/x86_64/syscall_arch.h
+index 92d5c179..4112d9c2 100644
+--- a/arch/x86_64/syscall_arch.h
++++ b/arch/x86_64/syscall_arch.h
+@@ -61,10 +61,10 @@ static __inline long __syscall6(long n, long a1, long a2, long a3, long a4, long
+ 	return ret;
+ }
+ 
+-#define VDSO_USEFUL
+-#define VDSO_CGT_SYM "__vdso_clock_gettime"
+-#define VDSO_CGT_VER "LINUX_2.6"
+-#define VDSO_GETCPU_SYM "__vdso_getcpu"
+-#define VDSO_GETCPU_VER "LINUX_2.6"
++// #define VDSO_USEFUL
++// #define VDSO_CGT_SYM "__vdso_clock_gettime"
++// #define VDSO_CGT_VER "LINUX_2.6"
++// #define VDSO_GETCPU_SYM "__vdso_getcpu"
++// #define VDSO_GETCPU_VER "LINUX_2.6"
+ 
+ #define IPC_64 0
 diff --git a/src/env/__libc_start_main.c b/src/env/__libc_start_main.c
 index 8fbe5262..48beb3a2 100644
 --- a/src/env/__libc_start_main.c

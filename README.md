@@ -44,7 +44,7 @@ Getting started
 
 Keep in mind that this repository is nothing more than a proof of concept.
 
-You'll need musl-gcc. Stock musl-gcc (mostly) works for x86_64, but to get i386 to behave, it's necessary to [patch](musl-i386-no-vdso.patch) musl. After that, check the paths in the `*.specs` files, run `make` and it's done.
+You'll need [patched](musl-no-vdso.patch) musl-gcc. (Using stock musl mostly works by accident on x86_64, but will usually crash on i386 without the patch.) After that, check the paths in the `*.specs` files, run `make` and it's done.
 
 The demo code uses `puts` as an entry point and prints two messages; the first one using a clean snapshot of another process, and the second one reusing the same snapshot. Any process that dynamically loads `libc.so` works, e.g. `/bin/cat`. Run `./unfork[32|64].elf $(pidof cat)` and enjoy.
 
