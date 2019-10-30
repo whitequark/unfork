@@ -676,9 +676,18 @@ int main2() {
   log("[=] found libc %s\n", shlib_it->pathname);
   const char *libc_pathname = shlib_it->pathname;
 
-  int (*xputs)(const char*) = (int (*)(const char*))get_symbol(libc_pathname, "puts");
+  int (*xputs)(const char *) = (int (*)(const char *))get_symbol(libc_pathname, "puts");
   call_with_tp(initial_tp, xputs, "hello, world");
   call_with_tp(initial_tp, xputs, "hello, again");
+
+  // If the above calls don't appear to print anything, it might be that stdout is in block-
+  // and not line-buffered mode, so let's flush it. The weird _IO_2_1_ fuckery is related to
+  // glibc ABI compatibility. We already require the target to use glibc (since we poke ld.so
+  // internals directly, and glibc's ld.so doesn't work with any other libc.so), so it's safe
+  // to depend on it here as well.
+  int (*xfflush)(FILE *) = (int (*)(FILE *))get_symbol(libc_pathname, "fflush");
+  FILE *xstdout = (FILE *)get_symbol(libc_pathname, "_IO_2_1_stdout_");
+  call_with_tp(initial_tp, xfflush, xstdout);
 
   return 0;
 }
