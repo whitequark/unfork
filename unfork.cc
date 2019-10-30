@@ -27,7 +27,7 @@ extern int _end;
 // will be placed, and we deal with enough unpredictability in our address space as is.
 // Because of how static linking with musl works, this actually replaces the allocator of
 // the libc itself as well, letting us use fopen() and friends.
-alignas(alignof(max_align_t)) char heap[0x8000], *heap_end = &heap[0];
+alignas(alignof(max_align_t)) char heap[0x40000], *heap_end = &heap[0];
 
 void *malloc(size_t size) {
   void *block = heap_end;
