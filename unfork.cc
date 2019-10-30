@@ -606,7 +606,7 @@ auto call_with_tp(uintptr_t tp, Fn fn, Args&&... args) {
 #if defined(__x86_64)
   uintptr_t old_fsbase, new_fsbase = tp;
   if (syscall(SYS_arch_prctl, ARCH_GET_FS, &old_fsbase) != 0)
-    die("[!] cannot set FSBASE: %s\n", strerror(errno));
+    die("[!] cannot get FSBASE: %s\n", strerror(errno));
   log("[-] local FSBASE " WPRIxPTR ", remote FSBASE " WPRIxPTR "\n", old_fsbase, new_fsbase);
   // syscall() uses TLS in several ways (errno, stack canary, etc), so avoid touching libc while
   // fsbase has the remote value. For the same reason we can't handle failure gracefully here.
