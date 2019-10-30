@@ -228,7 +228,9 @@ void unfork_process(int (*cont)()) {
   fclose(maps);
 
   // We need a new stack for both the main thread and userfaultfd thread, since both of those
-  // must be moved out of harm's way from their default allocations.
+  // must be moved out of harm's way from their default allocations. By explicitly placing both
+  // of these stacks, we also cause most libcs to place their TCBs and static TLS in the area
+  // we specify, assuming the size of the static TLS block isn't too huge.
   const size_t stack_size = PAGE_SIZE * 16;
   uintptr_t hole_bottom = (((uintptr_t)&_end) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
   uintptr_t hole_top = 0;
