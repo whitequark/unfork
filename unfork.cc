@@ -527,9 +527,12 @@ uintptr_t get_initial_tp() {
   dtv_t *dtv = (dtv_t *)_rtld_global->_dl_initial_dtv;
   uintptr_t tp;
 #if defined(__i386) || defined(__x86_64)
-  struct pthread *tcb = (struct pthread *)(
-    (uintptr_t)dtv[1].pointer.val + _rtld_global->_dl_tls_static_used);
+  uintptr_t tcb = (uintptr_t)dtv[1].pointer.val + _rtld_global->_dl_tls_static_used;
   tp = (uintptr_t)tcb;
+  // On TCB-at-TP architectures, the first word of TCB points back at the TCB itself, so we can
+  // use that to check that we indeed have the right TCB pointer. The second points to DTV.
+  if (!((*(void **)tcb == (void *)tcb) || (*((void **)tcb + 1) == (void *)dtv)))
+    die("[!] located initial TP at " WPRIxPTR " but sanity check failed\n", tp);
 #else
 #error "Unsupported architecture"
   // Usually just
