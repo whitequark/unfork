@@ -481,19 +481,19 @@ struct rtld_global {
   // something like that works. Sorry, I ain't in the mood to track down like five hundred
   // dependencies of internal glibc headers.
 #ifdef __x86_64
-  void *_padding0[492];
+  void *_padding0[490];
 #elif __i386
-  void *_padding0[523];
+  void *_padding0[521];
 #else
 #error "Unsupported architecture"
 #endif
+  size_t _dl_tls_static_nelem;
+  size_t _dl_tls_static_size;
   size_t _dl_tls_static_used;
-  void *_padding1;
+  size_t _dl_tls_static_align;
   void *_dl_initial_dtv;
   void *_padding2[4];
 };
-
-struct pthread;
 // end pilfering from glibc
 
 // Our unforking setup is quite good, but not perfect: we do not (yet) have the information to set
@@ -525,9 +525,20 @@ uintptr_t get_initial_tp() {
     die("[!] rtld_global size mismatch, expected %zx\n", sizeof(struct rtld_global));
 
   dtv_t *dtv = (dtv_t *)_rtld_global->_dl_initial_dtv;
+  log("[=] found DTV at " WPRIxPTR "\n", (uintptr_t)dtv);
+
   uintptr_t tp;
 #if defined(__i386) || defined(__x86_64)
-  uintptr_t tcb = (uintptr_t)dtv[1].pointer.val + _rtld_global->_dl_tls_static_used;
+  // _dl_tls_static_used is the aggregate size of all static TLS blocks, which can be more than
+  // one in case the application loads a DSO with static TLS relocations. This adds restrictions
+  // on loading order, but is nevertheless used for very hot __thread variables, the notable
+  // example being the implicit context in libgl.
+  //
+  // I'm not 100% sure this calculation is correct (there's something funky going on with TCB
+  // alignment), so we'll double check that the TCB address we got actually points to TCB.
+  uintptr_t tcb = ((uintptr_t)dtv[_rtld_global->_dl_tls_static_nelem].pointer.val +
+    _rtld_global->_dl_tls_static_used) & ~(_rtld_global->_dl_tls_static_align - 1);
+  log("[=] guessed TCB at " WPRIxPTR "\n", (uintptr_t)dtv);
   tp = (uintptr_t)tcb;
   // On TCB-at-TP architectures, the first word of TCB points back at the TCB itself, so we can
   // use that to check that we indeed have the right TCB pointer. The second points to DTV.
