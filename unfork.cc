@@ -31,8 +31,13 @@ alignas(alignof(max_align_t)) char heap[0x8000], *heap_end = &heap[0];
 
 void *malloc(size_t size) {
   void *block = heap_end;
-  if ((ssize_t)size > &heap[sizeof(heap)] - heap_end)
+  if ((ssize_t)size > &heap[sizeof(heap)] - heap_end) {
+    // Print a message even if the caller can handle allocation failure, since in some cases it
+    // may cause a hard to understand failure downstream (like fscanf only parsing some of
+    // the fields).
+    fprintf(stderr, "out of memory in static heap (%zd bytes requested)\n", size);
     return NULL;
+  }
   heap_end += size;
   return block;
 }
