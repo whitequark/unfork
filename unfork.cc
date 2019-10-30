@@ -546,8 +546,8 @@ static inline long raw_syscall_2(long nr, long a1, long a2) {
   long ret;
   __asm__ __volatile__("syscall"
            : "=a"(ret)
-           : "0"(nr), "r"(a1), "r"(a2)
-           : "memory", "cc", "r11", "cx");
+           : "a"(nr), "D"(a1), "S"(a2)
+           : "rcx", "r11", "memory");
   return ret;
 }
 #elif defined(__i386)
@@ -568,7 +568,7 @@ static inline int raw_syscall_1(int nr, int a1) {
   __asm__ __volatile__("int $0x80"
            : "=a"(ret)
            : "a"(nr), "b"(a1)
-           : "memory", "cc");
+           : "memory");
   return ret;
 }
 
