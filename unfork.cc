@@ -449,7 +449,7 @@ uint32_t elf_gnu_hash(const char *name) {
 
 uintptr_t get_symbol(const char *shlib_name, const char *sym_name,
                      size_t *sym_size = NULL) {
-  log("[=] looking for symbol '%s' in shared library '%s'\n", sym_name, shlib_name);
+  log("[=] looking for symbol '%s' in shared library matching '%s'\n", sym_name, shlib_name);
 
   struct shlib *shlib_it;
   for (shlib_it = shlibs; shlib_it; shlib_it = shlib_it->next) {
@@ -458,7 +458,8 @@ uintptr_t get_symbol(const char *shlib_name, const char *sym_name,
       break;
   }
   if (shlib_it == 0)
-    die("[!] library not mapped\n");
+    die("[!] no matching library\n");
+  log("[-] looking in library '%s'\n", shlib_it->pathname);
   uintptr_t base = shlib_it->base;
 
   const ElfW(Ehdr) *ehdr = (const ElfW(Ehdr) *)base;
