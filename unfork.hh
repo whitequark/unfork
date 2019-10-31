@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+void flush_process();
+
 uintptr_t get_symbol(const char *shlib_pat, const char *sym_name, size_t *sym_size = NULL);
 
 uintptr_t get_initial_tp();

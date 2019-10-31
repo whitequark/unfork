@@ -95,6 +95,7 @@ struct mapping {
   int prot;
   size_t offset;
   const char *pathname;
+  bool dirty;
   struct mapping *prev, *next;
 } *mappings = NULL, *rmappings = NULL;
 
@@ -132,6 +133,7 @@ void *uffd_thread_fn(void *) {
         }
         if (mapping_it == NULL)
           die("[!] address is not mapped\n");
+        mapping_it->dirty = true;
 
         struct iovec local_iov[1] = { {cache, PAGE_SIZE} };
         struct iovec remote_iov[1] = { {(void*)fault_addr, PAGE_SIZE} };
@@ -211,7 +213,7 @@ void unfork_process(int (*cont)()) {
     if (perms[0] == 'r') prot |= PROT_READ;
     if (perms[1] == 'w') prot |= PROT_WRITE;
     if (perms[2] == 'x') prot |= PROT_EXEC;
-    mappings = new mapping { start, end, prot, offset, pathname, NULL, mappings };
+    mappings = new mapping { start, end, prot, offset, pathname, false, NULL, mappings };
     if (mappings->next == NULL)
       rmappings = mappings;
     else
@@ -394,6 +396,30 @@ int unfork_stage2(void *info_p) {
 #endif
 
   exit(info.cont());
+}
+
+// Clear all the cached application data, e.g. so that new values may be sampled by the agent.
+// This doesn't reacquire the memory map, so if the application changed it (usually by requesting
+// more heap pages from the kernel, or by loading dynamic libraries), a crash is likely to happen.
+void flush_process() {
+  struct mapping *mapping_it;
+  for (mapping_it = rmappings; mapping_it; mapping_it = mapping_it->prev) {
+    if (!mapping_it->dirty) continue;
+
+    log("[=] flushing dirty mapping " WPRIxPTR "-" WPRIxPTR "\n",
+      mapping_it->start, mapping_it->end);
+
+    void *mm = mmap((void *)mapping_it->start, mapping_it->end - mapping_it->start,
+      mapping_it->prot, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
+    if (mm == MAP_FAILED)
+      die("[!] cannot add mapping: %s\n", strerror(errno));
+
+    struct uffdio_register uffd_register = {};
+    uffd_register.range = {mapping_it->start, mapping_it->end - mapping_it->start};
+    uffd_register.mode = UFFDIO_REGISTER_MODE_MISSING;
+    if (ioctl(uffd, UFFDIO_REGISTER, &uffd_register) == -1)
+      die("[!] cannot register mapping with userfaultfd: %s\n", strerror(errno));
+  }
 }
 
 #if UINTPTR_MAX > 0xffffffff
