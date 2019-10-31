@@ -542,7 +542,8 @@ uintptr_t get_symbol(const char *shlib_name, const char *sym_name,
       ELF32_ST_TYPE(sym->st_info) != STT_OBJECT)
     die("[!] symbol is not function or data\n");
   uintptr_t sym_addr = base + sym->st_value;
-  log("[=] symbol found at " WPRIxPTR " with size %0zx\n", sym_addr, sym->st_size);
+  log("[=] symbol found at " WPRIxPTR " (" WPRIxPTR "+" WPRIxPTR ") with size %0zx\n",
+    sym_addr, base, sym->st_value, sym->st_size);
   if (sym_size != NULL) *sym_size = sym->st_size;
   return sym_addr;
 }
