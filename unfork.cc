@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <elf.h>
+#include <fnmatch.h>
 
 const size_t PAGE_SIZE = (size_t)sysconf(_SC_PAGESIZE);
 
@@ -447,14 +448,14 @@ uint32_t elf_gnu_hash(const char *name) {
   return h;
 }
 
-uintptr_t get_symbol(const char *shlib_name, const char *sym_name,
+uintptr_t get_symbol(const char *shlib_pat, const char *sym_name,
                      size_t *sym_size = NULL) {
-  log("[=] looking for symbol '%s' in shared library matching '%s'\n", sym_name, shlib_name);
+  log("[=] looking for symbol '%s' in shared library matching '%s'\n", sym_name, shlib_pat);
 
   struct shlib *shlib_it;
   for (shlib_it = shlibs; shlib_it; shlib_it = shlib_it->next) {
-    if (strlen(shlib_it->pathname) >= strlen(shlib_name) &&
-        !strcmp(shlib_it->pathname + strlen(shlib_it->pathname) - strlen(shlib_name), shlib_name))
+    const char *slashname = strrchr(shlib_it->pathname, '/');
+    if (!fnmatch(shlib_pat, slashname ? slashname + 1 : shlib_it->pathname, FNM_PATHNAME))
       break;
   }
   if (shlib_it == 0)
@@ -593,17 +594,9 @@ struct rtld_global {
 // it always contains a pointer to DTV, although at an architecture-specific location, so those
 // are much easier.
 uintptr_t get_initial_tp() {
-  struct shlib *shlib_it;
-  for (shlib_it = shlibs; shlib_it; shlib_it = shlib_it->next) {
-    if (strstr(shlib_it->pathname, "/ld-")) break;
-  }
-  if (shlib_it == NULL)
-    die("[!] rtld not found\n");
-  log("[=] found rtld %s\n", shlib_it->pathname);
-
   size_t sizeof__rtld_global;
   struct rtld_global *_rtld_global =
-    (struct rtld_global *)get_symbol(shlib_it->pathname, "_rtld_global", &sizeof__rtld_global);
+    (struct rtld_global *)get_symbol("ld-*.so", "_rtld_global", &sizeof__rtld_global);
   if (sizeof__rtld_global != sizeof(struct rtld_global))
     die("[!] rtld_global size mismatch, expected %zx\n", sizeof(struct rtld_global));
 
@@ -750,16 +743,7 @@ int main(int argc, char **argv) {
 int main2() {
   uintptr_t initial_tp = get_initial_tp();
 
-  struct shlib *shlib_it;
-  for (shlib_it = shlibs; shlib_it; shlib_it = shlib_it->next) {
-    if (strstr(shlib_it->pathname, "/libc-")) break;
-  }
-  if (shlib_it == NULL)
-    die("[!] libc not found\n");
-  log("[=] found libc %s\n", shlib_it->pathname);
-  const char *libc_pathname = shlib_it->pathname;
-
-  int (*xputs)(const char *) = (int (*)(const char *))get_symbol(libc_pathname, "puts");
+  int (*xputs)(const char *) = (int (*)(const char *))get_symbol("libc*.so", "puts");
   call_with_tp(initial_tp, xputs, "hello, world");
   call_with_tp(initial_tp, xputs, "hello, again");
 
@@ -768,8 +752,8 @@ int main2() {
   // glibc ABI compatibility. We already require the target to use glibc (since we poke ld.so
   // internals directly, and glibc's ld.so doesn't work with any other libc.so), so it's safe
   // to depend on it here as well.
-  int (*xfflush)(FILE *) = (int (*)(FILE *))get_symbol(libc_pathname, "fflush");
-  FILE *xstdout = (FILE *)get_symbol(libc_pathname, "_IO_2_1_stdout_");
+  int (*xfflush)(FILE *) = (int (*)(FILE *))get_symbol("libc*.so", "fflush");
+  FILE *xstdout = (FILE *)get_symbol("libc*.so", "_IO_2_1_stdout_");
   call_with_tp(initial_tp, xfflush, xstdout);
 
   return 0;
