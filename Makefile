@@ -6,15 +6,11 @@ all: $(ALL)
 clean:
 	rm -f $(ALL)
 
-CXX64 ?= gcc -specs musl-gcc-64.specs
-CXX32 ?= gcc -specs musl-gcc-32.specs
-CXXFLAGS += -std=c++14 -fno-exceptions -Wall -Wextra \
-	-pthread -static -Wl,-Ttext-segment,0x00100000 -g
-CXXFLAGS64 = -m64
-CXXFLAGS32 = -m32
+CXXFLAGS = -std=c++14 -fno-exceptions -Wall -Wextra -g
+LDFLAGS  = -pthread -static -Wl,-Ttext-segment,0x00100000
 
-$(NAME)64.elf: $(NAME).cc
-	$(CXX64) $(CXXFLAGS64) $(CXXFLAGS) -o $@ $^
+$(NAME)64.elf: unfork.cc agent.cc
+	gcc -specs musl-gcc-64.specs -m64 $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
-$(NAME)32.elf: $(NAME).cc
-	$(CXX32) $(CXXFLAGS32) $(CXXFLAGS) -o $@ $^
+$(NAME)32.elf: unfork.cc agent.cc
+	gcc -specs musl-gcc-32.specs -m32 $(CXXFLAGS) $(LDFLAGS) -o $@ $^

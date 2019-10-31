@@ -18,6 +18,7 @@
 #include <pthread.h>
 #include <elf.h>
 #include <fnmatch.h>
+#include "unfork.hh"
 
 const size_t PAGE_SIZE = (size_t)sysconf(_SC_PAGESIZE);
 
@@ -448,8 +449,7 @@ uint32_t elf_gnu_hash(const char *name) {
   return h;
 }
 
-uintptr_t get_symbol(const char *shlib_pat, const char *sym_name,
-                     size_t *sym_size = NULL) {
+uintptr_t get_symbol(const char *shlib_pat, const char *sym_name, size_t *sym_size) {
   log("[=] looking for symbol '%s' in shared library matching '%s'\n", sym_name, shlib_pat);
 
   struct shlib *shlib_it;
@@ -690,9 +690,10 @@ static inline int raw_set_thread_area(uintptr_t tp, unsigned entry_number = (uns
 }
 #endif
 
-template<typename Fn, typename... Args>
-auto call_with_tp(uintptr_t tp, Fn fn, Args&&... args) {
-  log("[-] calling " WPRIxPTR "\n", (uintptr_t)fn);
+void *call_with_tp_raw(uintptr_t tp, void *(*fn)(void *), void *arg) {
+  void *ret;
+  log("[-] calling " WPRIxPTR "(" WPRIxPTR ") with TP " WPRIxPTR "\n",
+    (uintptr_t)fn, (uintptr_t)arg, (uintptr_t)tp);
 #if defined(__x86_64)
   uintptr_t old_fsbase, new_fsbase = tp;
   if (syscall(SYS_arch_prctl, ARCH_GET_FS, &old_fsbase) != 0)
@@ -702,7 +703,7 @@ auto call_with_tp(uintptr_t tp, Fn fn, Args&&... args) {
   // fsbase has the remote value. For the same reason we can't handle failure gracefully here.
   if (raw_syscall_2(SYS_arch_prctl, ARCH_SET_FS, new_fsbase) != 0)
     abort();
-  auto ret = fn(args...);
+  ret = fn(arg);
   if (raw_syscall_2(SYS_arch_prctl, ARCH_SET_FS, old_fsbase) != 0)
     abort();
 #elif defined(__i386)
@@ -718,15 +719,16 @@ auto call_with_tp(uintptr_t tp, Fn fn, Args&&... args) {
   log("[-] local GS %04x GSBASE " WPRIxPTR " remote GS %04x GSBASE " WPRIxPTR "\n",
     old_gs, old_gsbase, new_gs, new_gsbase);
   raw_set_gs(new_gs);
-  auto ret = fn(args...);
+  ret = fn(arg);
   raw_set_gs(old_gs);
 #else
 #error "Unsupported architecture"
 #endif
+  log("[-] returned " WPRIxPTR "\n", (uintptr_t)ret);
   return ret;
 }
 
-int main2();
+int agent();
 
 int main(int argc, char **argv) {
   if (argc != 2)
@@ -737,24 +739,5 @@ int main(int argc, char **argv) {
   if (*s_pidend)
     die("[!] pid is not a number\n");
 
-  unfork_process(main2);
-}
-
-int main2() {
-  uintptr_t initial_tp = get_initial_tp();
-
-  int (*xputs)(const char *) = (int (*)(const char *))get_symbol("libc*.so", "puts");
-  call_with_tp(initial_tp, xputs, "hello, world");
-  call_with_tp(initial_tp, xputs, "hello, again");
-
-  // If the above calls don't appear to print anything, it might be that stdout is in block-
-  // and not line-buffered mode, so let's flush it. The weird _IO_2_1_ fuckery is related to
-  // glibc ABI compatibility. We already require the target to use glibc (since we poke ld.so
-  // internals directly, and glibc's ld.so doesn't work with any other libc.so), so it's safe
-  // to depend on it here as well.
-  int (*xfflush)(FILE *) = (int (*)(FILE *))get_symbol("libc*.so", "fflush");
-  FILE *xstdout = (FILE *)get_symbol("libc*.so", "_IO_2_1_stdout_");
-  call_with_tp(initial_tp, xfflush, xstdout);
-
-  return 0;
+  unfork_process(agent);
 }
