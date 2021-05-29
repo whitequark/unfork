@@ -33,7 +33,7 @@ Introduction
 
 In terms of functionality, you get virtual memory and [TLS](https://en.wikipedia.org/wiki/Thread-local_storage "Thread-Local Storage, not that socket thing") (TLS is everywhere!) but not, say, files or shared memory; at some point a kernel module would be necessary. On the platform support side, x86_64 and i386 seem to work well, and those two are also the most challenging ones.
 
-[musl]: https://www.musl-libc.org
+[musl]: https://musl.libc.org/
 
 ### Q: Very interesting, thank you.
 
