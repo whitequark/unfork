@@ -41,6 +41,10 @@ In terms of functionality, you get virtual memory and [TLS](https://en.wikipedia
 
 **A:** You're welcome!
 
+### Q: By the way, why did you actually build this?
+
+**A:** [tf2_healslut](https://github.com/whitequark/tf2_healslut)
+
 Getting started
 ---------------
 
